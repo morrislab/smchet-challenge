@@ -1,11 +1,12 @@
 #!/usr/bin/env python2
 import argparse
 import gzip
-import os
 import json
+import numpy as np
+import os
 import sys
 import util2
-import numpy as np
+import zipfile
 from collections import defaultdict
 
 def summarize_subclones(tree):
@@ -55,28 +56,27 @@ def parse_json(fin):
 
 def write_json(dataset_name, tree_file, num_trees, summaries_output, mutation_assignment_output):
   summaries = {
-    'trees': [],
-  }
-  mut_assignments = {
-    'trees': [],
+    'dataset_name': dataset_name,
+    'trees': {},
   }
 
   reader = util2.TreeReader(tree_file)
-  for idx, llh, tree in reader.load_trees_and_metadata(num_trees = num_trees, remove_empty_vertices = True):
-    subclones, muts, structure = summarize_subclones(tree)
+  with zipfile.ZipFile(mutation_assignment_output, 'w', compression=zipfile.ZIP_DEFLATED) as muts_file:
+    for idx, llh, tree in reader.load_trees_and_metadata(num_trees = num_trees, remove_empty_vertices = True):
+      subclones, muts, structure = summarize_subclones(tree)
 
-    mut_assignments['trees'].append(muts)
-    summaries['trees'].append({
-      'llh': llh,
-      'structure': structure,
-      'subclones': subclones,
-    })
+      summaries['trees'][idx] = {
+        'llh': llh,
+        'structure': structure,
+        'subclones': subclones,
+      }
+
+      muts['dataset_name'] = dataset_name
+      muts_file.writestr('%s.json' % idx, json.dumps(muts))
   reader.close()
 
-  for vals, outfn in ((summaries, summaries_output), (mut_assignments, mutation_assignment_output)):
-    vals['dataset_name'] = dataset_name
-    with gzip.GzipFile(outfn, 'w') as outf:
-      json.dump(vals, outf)
+  with gzip.GzipFile(summaries_output, 'w') as summf:
+    json.dump(summaries, summf)
 
 def main():
   parser = argparse.ArgumentParser(description='Write JSON files describing trees')
