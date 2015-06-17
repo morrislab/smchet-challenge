@@ -107,10 +107,39 @@ function draw_charts(ds1, ds2) {
     frac_clonal: prepare_frac_clonal_rows(ds1, ds2),
     num_subclones: prepare_subclone_counts_rows(ds1, ds2),
   };
+
   draw_chart('Cellularity (' + rows.purity.length + ' datasets)', 'purity', rows.purity);
-  draw_chart('Proportion of clonal SSMs (' + rows.frac_clonal.length + ' datasets)', 'frac_clonal', rows.frac_clonal, {
-    extra_cols: [{type: 'string', role: 'style'}]
-  });
+
+  if(get_url_param('split_frac_clonal') === 'true') {
+    var subclones_gt_rows = rows.frac_clonal.filter(function(r) {
+      var sampid = r[2];
+      return ds1[sampid].num_subclones > ds2[sampid].num_subclones;
+    });
+    var subclones_lte_rows = rows.frac_clonal.filter(function(r) {
+      var sampid = r[2];
+      return ds1[sampid].num_subclones <= ds2[sampid].num_subclones;
+    });
+    draw_chart(
+      'Proportion of clonal SSMs, ' + get_url_param('ds1n') + ' subclones > ' + get_url_param('ds2n') + ' subclones',
+      'frac_clonal_1',
+       subclones_gt_rows, {
+         extra_cols: [{type: 'string', role: 'style'}]
+    });
+    draw_chart(
+      'Proportion of clonal SSMs, ' + get_url_param('ds1n') + ' subclones <= ' + get_url_param('ds2n') + ' subclones',
+      'frac_clonal_2',
+       subclones_lte_rows, {
+         extra_cols: [{type: 'string', role: 'style'}]
+    });
+  } else {
+    draw_chart(
+      'Proportion of clonal SSMs (' + rows.frac_clonal.length + ' datasets)',
+      'frac_clonal_1',
+       rows.frac_clonal, {
+         extra_cols: [{type: 'string', role: 'style'}]
+    });
+  }
+
 
   var hvals = [], vvals = [];
   rows.num_subclones.forEach(function(row) {
