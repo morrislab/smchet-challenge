@@ -53,8 +53,6 @@ def calc_frac_clonal(mut_assignments, tree_summary, min_ssms):
       tree_assignments = json.loads(tree_assignments_json)
 
       for subclone_idx, muts in tree_assignments.items():
-        if subclone_idx == 'dataset_name':
-          continue
         subclone_idx = int(subclone_idx)
         is_clonal = (subclone_idx == 1)
 

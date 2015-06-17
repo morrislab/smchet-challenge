@@ -12,7 +12,7 @@ from collections import defaultdict
 def summarize_subclones(tree):
   subclones = {}
   structure = defaultdict(list)
-  mut_assignments = defaultdict(lambda: {'cnvs': [], 'ssms': []})
+  mut_assignments = {'mut_assignments': defaultdict(lambda: {'cnvs': [], 'ssms': []})}
   idx = [0]
 
   def _traverse_r(vertex, parent):
@@ -26,10 +26,10 @@ def summarize_subclones(tree):
     num_cnvs = 0
     for mut in mutations:
       if mut.id.startswith('s'):
-        mut_assignments[current_idx]['ssms'].append({'id': mut.id, 'name': mut.name})
+        mut_assignments['mut_assignments'][current_idx]['ssms'].append({'id': mut.id, 'name': mut.name})
         num_ssms += 1
       elif mut.id.startswith('c'):
-        mut_assignments[current_idx]['cnvs'].append({'id': mut.id})
+        mut_assignments['mut_assignments'][current_idx]['cnvs'].append({'id': mut.id})
         num_cnvs += 1
       else:
         raise Exception('Unknown mutation ID type: %s' % mut.id)
