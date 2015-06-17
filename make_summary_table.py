@@ -27,15 +27,16 @@ def calc_subclone_stats(tree_summary, min_ssms):
   cellularities = []
 
   for tree_idx, tree in tree_summary.items():
-    try:
-      subclones = tree['subclones']
-      subclones = filter_subclones(subclones, min_ssms)
-      cancer_pop_counts.append(len(subclones))
-      clonal_idx = find_clonal_node(subclones)
-      cellularities.append(subclones[clonal_idx]['phi'])
-    except:
-      from IPython import embed
-      embed()
+    subclones = tree['subclones']
+    subclones = filter_subclones(subclones, min_ssms)
+    # Tree may not have any nodes left after removing nodes with < 3 SSMs. In
+    # such cases, skip this tree.
+    if len(subclones) == 0:
+      continue
+
+    cancer_pop_counts.append(len(subclones))
+    clonal_idx = find_clonal_node(subclones)
+    cellularities.append(subclones[clonal_idx]['phi'])
   return (intmode(cancer_pop_counts) - 1, np.mean(cellularities))
 
 def calc_frac_clonal(mut_assignments, tree_summary, min_ssms):
@@ -47,6 +48,12 @@ def calc_frac_clonal(mut_assignments, tree_summary, min_ssms):
     for zinfo in mutf.infolist():
       tree_idx = zinfo.filename.split('.')[0]
       subclones = filter_subclones(tree_summary['trees'][tree_idx]['subclones'], min_ssms)
+
+      # Tree may not have any nodes left after removing nodes with < 3 SSMs. In
+      # such cases, skip this tree.
+      if len(subclones) == 0:
+        continue
+
       clonal_idx = find_clonal_node(subclones)
 
       tree_assignments_json = mutf.read(zinfo)
