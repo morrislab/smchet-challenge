@@ -50,7 +50,7 @@ def calc_frac_clonal(mut_assignments, tree_summary, min_ssms):
       clonal_idx = find_clonal_node(subclones)
 
       tree_assignments_json = mutf.read(zinfo)
-      tree_assignments = json.loads(tree_assignments_json)
+      tree_assignments = json.loads(tree_assignments_json)['mut_assignments']
 
       for subclone_idx, muts in tree_assignments.items():
         subclone_idx = int(subclone_idx)
