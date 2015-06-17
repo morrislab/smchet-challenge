@@ -91,34 +91,6 @@ function prepare_subclone_counts_rows(ds1, ds2) {
   return rows;
 }
 
-function _prepare_subclone_counts_rows(ds1, ds2) {
-  var aggregated = {};
-
-  for(var sampid in ds1) {
-    if(!(sampid in ds2)) {
-      console.log('No data for ' + sampid + ' in ds2');
-      continue;
-    }
-
-    var key = ds1[sampid]['num_subclones'] + ',' + ds2[sampid]['num_subclones'];
-    if(typeof aggregated[key] === 'undefined')
-      aggregated[key] = 0;
-    aggregated[key]++;
-  }
-
-  var rows = [];
-  for(var pair in aggregated) {
-    var splits = pair.split(',');
-    rows.push([
-      parseInt(splits[0], 10),
-      parseInt(splits[1], 10),
-      'Datasets: ' + aggregated[pair],
-      'point { size: ' + aggregated[pair] + ' }'
-    ]);
-  }
-  return rows;
-}
-
 function build_ticks(vals) {
   var min = Math.floor(Math.min.apply(Math, vals));
   var max = Math.ceil(Math.max.apply(Math, vals));
@@ -149,6 +121,56 @@ function draw_charts(ds1, ds2) {
     hticks: build_ticks(hvals),
     vticks: build_ticks(vvals),
     extra_cols: [{type: 'string', role: 'style'}]
+  });
+
+  draw_num_subclones_table(ds1, ds2);
+}
+
+function draw_num_subclones_table(ds1, ds2) {
+  var table = document.getElementById('num_subclones_table');
+  table.innerHTML += '<tr><th>Dataset</th><th>' + get_url_param('ds1n') + '</th><th>' + get_url_param('ds2n') + '</th></tr>';
+
+
+  var rows = {
+    gt: [],
+    lt: [],
+    equal: []
+  };
+  var bgcolor = {
+    gt: '#ffd484',   // Orange
+    lt: '#ff8484',   // Red
+    equal: '#84d5ff' // Blue
+  };
+
+  for(var sampid in ds1) {
+    if(!(sampid in ds2)) {
+      console.log('No data for ' + sampid + ' in ds2');
+      continue;
+    }
+
+    var cells = [sampid, ds1[sampid]['num_subclones'], ds2[sampid]['num_subclones']];
+    if(ds1[sampid]['num_subclones'] > ds2[sampid]['num_subclones']) {
+      rows.gt.push(cells);
+    } else if(ds1[sampid]['num_subclones'] < ds2[sampid]['num_subclones']) {
+      rows.lt.push(cells);
+    } else {
+      rows.equal.push(cells);
+    }
+  }
+
+  ['equal', 'gt', 'lt'].forEach(function(relation) {
+    rows[relation].sort(function(a, b) {
+      return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0;
+    });
+    rows[relation] = rows[relation].map(function(c) {
+      var str = '<tr style="background-color: ' + bgcolor[relation] + '">';
+      str += c.map(function(d) {
+        return '<td>' + d + '</td>';
+      }).join('');
+      str += '</tr>';
+      return str;
+    });
+    table.innerHTML += rows[relation].join('\n');
   });
 }
 
@@ -222,4 +244,4 @@ function main() {
   });
 }
 
-main();
+google.setOnLoadCallback(main);
