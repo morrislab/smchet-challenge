@@ -54,11 +54,59 @@ def parse_json(fin):
   with open(fin) as fh:
     return json.load(fh)
 
-def write_json(dataset_name, tree_file, num_trees, summaries_output, mutation_assignment_output):
+def extract_mutations(tree):
+  cnvs = {}
+  ssms = {}
+  ssms_in_cnvs = defaultdict(list)
+
+  def _traverse(node):
+    for mut in node['node'].get_data():
+      if mut.id.startswith('s'):
+        ssms[mut.id] = {
+          'name': mut.name,
+          'ref_reads': mut.a,
+          'total_reads': mut.d,
+          'mu_r': mut.mu_r,
+          'mu_v': mut.mu_v
+        }
+        for cnv, maternal_cn, paternal_cn in mut.cnv:
+          ssms_in_cnvs[cnv.id].append({
+            'ssm_id': mut.id,
+            'maternal_cn': maternal_cn,
+            'paternal_cn': paternal_cn,
+          })
+      elif mut.id.startswith('c'):
+        cnvs[mut.id] = {
+          'ref_reads': mut.a,
+          'total_reads': mut.d
+        }
+      else:
+        raise Exception('Unknown mutation type: %s' % mut.id)
+    for child in node['children']:
+      _traverse(child)
+  _traverse(tree.root)
+
+  for cnv_id, cnv in cnvs.items():
+    cnv['ssms'] = ssms_in_cnvs[cnv_id]
+
+  return {
+    'ssms': ssms,
+    'cnvs': cnvs,
+  }
+
+def write_json(dataset_name, tree_file, num_trees, summaries_output, mutation_output, mutation_assignment_output):
   summaries = {
     'dataset_name': dataset_name,
     'trees': {},
   }
+
+  reader = util2.TreeReader(tree_file)
+  first_tree = next(reader.load_trees())
+  reader.close()
+  mutations = extract_mutations(first_tree)
+  mutations['dataset_name'] = dataset_name
+  with gzip.GzipFile(mutation_output, 'w') as mutf:
+    json.dump(mutations, mutf)
 
   reader = util2.TreeReader(tree_file)
   with zipfile.ZipFile(mutation_assignment_output, 'w', compression=zipfile.ZIP_DEFLATED) as muts_file:
@@ -88,11 +136,13 @@ def main():
     help='File containing sampled trees')
   parser.add_argument('tree_summary_output',
     help='Output file for JSON-formatted tree summaries')
+  parser.add_argument('mutation_output',
+    help='Output file for JSON-formatted list of mutations')
   parser.add_argument('mutation_assignment_output',
     help='Output file for JSON-formatted list of SSMs and CNVs assigned to each subclone')
   args = parser.parse_args()
 
-  write_json(args.dataset_name, args.tree_file, args.num_trees, args.tree_summary_output, args.mutation_assignment_output)
+  write_json(args.dataset_name, args.tree_file, args.num_trees, args.tree_summary_output, args.mutation_output, args.mutation_assignment_output)
 
 if __name__ == '__main__':
   main()
