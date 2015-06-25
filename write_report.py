@@ -471,7 +471,7 @@ def main():
     print(ssc.cancer_pops, file=outf)
   with open(os.path.join(args.output_dir, '1C.txt'), 'w') as outf:
     for cluster_num, (num_ssms, phi) in enumerate(zip(ssc.num_ssms, ssc.phis)):
-      print(cluster_num, num_ssms, phi, sep='\t', file=outf)
+      print(cluster_num + 1, num_ssms, phi, sep='\t', file=outf)
 
   cmc = ClusterMembershipComputer(ssc.cancer_pops, loader)
   with open(os.path.join(args.output_dir, '2A.txt'), 'w') as outf:
