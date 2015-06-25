@@ -316,18 +316,23 @@ class ClusterMembershipComputer(object):
     return [('s%s' % idx, assignment) for idx, assignment in enumerate(assignments)]
 
 class CoassignmentComputer(object):
-  def compute_coassignments(ssm_names, idx_lookup, mutass):
-    num_ssms = len(ssm_names)
+  def __init__(self, loader):
+    self._loader = loader
+
+  def compute_coassignments(self):
+    num_ssms = self._loader.num_ssms
     coass = np.zeros((num_ssms, num_ssms))
     num_trees = 0
 
-    for _, mut_assignments in load_mut_assignments(mutass):
+    for tree_idx, mut_assignments in self._loader.load_all_mut_assignments():
       num_trees += 1
-      for _, muts in mut_assignments.items():
+      if num_trees > 3:
+        break
+      for subclone_idx, muts in mut_assignments.items():
         ssms = muts['ssms']
         for ssm1, ssm2 in itertools.combinations(ssms, 2):
-          ssm1_idx = idx_lookup[ssm1['name']]
-          ssm2_idx = idx_lookup[ssm2['name']]
+          ssm1_idx = int(ssm1['id'][1:])
+          ssm2_idx = int(ssm2['id'][1:])
           coass[ssm1_idx, ssm2_idx] += 1.0
           coass[ssm2_idx, ssm1_idx] += 1.0
 
@@ -366,7 +371,6 @@ class SsmRelationComputer(object):
     num_trees = 0
 
     for tree_idx, mut_assignments in self._loader.load_all_mut_assignments():
-      print('lol', tree_idx)
       num_trees += 1
       vert_relations = self._determine_vertex_relations(self._loader.tree_summary[tree_idx]['structure'])
 
@@ -392,9 +396,12 @@ class SsmRelationComputer(object):
         ssm1_subclone = ssm_assignments[ssm1_idx]
         ssm2_subclone = ssm_assignments[ssm2_idx]
 
-        if ssm1_subclone != ssm2_subclone and \
-        vert_relations[(ssm1_subclone, ssm2_subclone)] == self.VertexRelation.ancestor_desc:
+        if ssm1_subclone == ssm2_subclone:
+          continue
+        if vert_relations[(ssm1_subclone, ssm2_subclone)] == self.VertexRelation.ancestor_desc:
           ancestor_desc[ssm1_idx, ssm2_idx] += 1.0
+        if vert_relations[(ssm1_subclone, ssm2_subclone)] == self.VertexRelation.desc_ancestor:
+          ancestor_desc[ssm2_idx, ssm1_idx] += 1.0
 
     ancestor_desc /= num_trees
     return ancestor_desc
@@ -425,6 +432,19 @@ def main():
   with open(lolpath) as fout:
     loader = pickle.load(fout)
 
+  coassc = CoassignmentComputer(loader)
+  coass_matrix = coassc.compute_coassignments()
+  with open(os.path.join(args.output_dir, '2B.txt'), 'w') as outf:
+    np.savetxt(outf, coass_matrix, newline='\n')
+  return
+
+  ssmrc = SsmRelationComputer(loader)
+  anc_desc = ssmrc.compute_ancestor_desc()
+
+  with open(os.path.join(args.output_dir, '3B.txt'), 'w') as outf:
+    np.savetxt(outf, anc_desc, newline='\n')
+  return
+
   ssc = SubcloneStatsComputer(loader.tree_summary)
   ssc.calc()
   with open(os.path.join(args.output_dir, '1A.txt'), 'w') as outf:
@@ -439,10 +459,5 @@ def main():
   with open(os.path.join(args.output_dir, '2A.txt'), 'w') as outf:
     for ssm_id, cluster in cmc.calc():
       print(ssm_id, cluster, sep='\t', file=outf)
-
-  ssmrc = SsmRelationComputer(loader)
-  anc_desc = ssmrc.compute_ancestor_desc()
-  with open(os.path.join(args.output_dir, '3B.txt'), 'w') as outf:
-    np.savetxt(outf, anc_desc, newline='\n')
 
 main()
