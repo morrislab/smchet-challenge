@@ -406,37 +406,6 @@ class SsmRelationComputer(object):
     ancestor_desc /= num_trees
     return ancestor_desc
 
-  def compute_ancestor_desc_(self):
-    num_ssms = self._loader.num_ssms
-    ancestor_desc = np.zeros((self._loader.num_ssms, num_ssms))
-    num_trees = 0
-    raise Exception('pants')
-
-    for tree_idx, mut_assignments in self._loader.load_all_mut_assignments():
-      num_trees += 1
-      vert_relations = self._determine_vertex_relations(self._loader.tree_summary[tree_idx]['structure'])
-
-      for pair, relation in vert_relations.items():
-        if relation != self.VertexRelation.ancestor_desc:
-          continue
-        anc, desc = pair
-        # No SSMs assigned to root node, so skip.
-        if anc == 0:
-          continue
-
-        anc_coords = []
-        desc_coords = []
-        for anc_ssm in mut_assignments[anc]['ssms']:
-          anc_coord = int(anc_ssm['id'][1:])
-          for desc_ssm in mut_assignments[desc]['ssms']:
-            desc_coord = int(desc_ssm['id'][1:])
-            anc_coords.append(anc_coord)
-            desc_coords.append(desc_coord)
-        ancestor_desc[anc_coord, desc_coords] += 1.0
-
-    ancestor_desc /= num_trees
-    return ancestor_desc
-
 def intmode(iter):
   return int(stats.mode(iter)[0][0])
 
