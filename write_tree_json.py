@@ -129,7 +129,10 @@ def write_json(dataset_name, tree_file, num_trees, summaries_output, mutation_ou
     json.dump(summaries, summf)
 
 def main():
-  parser = argparse.ArgumentParser(description='Write JSON files describing trees')
+  parser = argparse.ArgumentParser(
+    description='Write JSON files describing trees',
+		formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+  )
   parser.add_argument('--num-trees', '-n', dest='num_trees', type=int,
     help='Only examine given number of trees')
   parser.add_argument('dataset_name',
