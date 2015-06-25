@@ -130,7 +130,7 @@ class ResultLoader(object):
 
       tree_structure[parent] = [
         node for node in (tree_structure[parent] + to_add)
-        if node not in to_remove
+        if node not in removed
       ]
       tree_structure[parent].sort()
 
@@ -326,7 +326,7 @@ class CoassignmentComputer(object):
 
     for tree_idx, mut_assignments in self._loader.load_all_mut_assignments():
       num_trees += 1
-      if num_trees > 3:
+      if num_trees > 5:
         break
       for subclone_idx, muts in mut_assignments.items():
         ssms = muts['ssms']
@@ -372,6 +372,8 @@ class SsmRelationComputer(object):
 
     for tree_idx, mut_assignments in self._loader.load_all_mut_assignments():
       num_trees += 1
+      if num_trees > 5:
+        break
       vert_relations = self._determine_vertex_relations(self._loader.tree_summary[tree_idx]['structure'])
 
       ssm_assignment_map = {}
@@ -406,11 +408,35 @@ class SsmRelationComputer(object):
     ancestor_desc /= num_trees
     return ancestor_desc
 
+class NodeRelationComputer(object):
+  def __init__(self, loader, num_cancer_pops):
+    self._loader = loader
+    self._num_cancer_pops = num_cancer_pops
+
+  def compute_relations(self):
+    adj_matrix = np.zeros((self._num_cancer_pops + 1, self._num_cancer_pops + 1))
+
+    for tree_idx, tree_features in self._loader.tree_summary.items():
+      structure = tree_features['structure']
+      # Only examine populations with mode number of nodes.
+      if len(tree_features['populations']) - 1 != self._num_cancer_pops:
+        continue
+      print(len(tree_features['populations']), self._num_cancer_pops, len(tree_features['structure']), tree_features['structure'], tree_idx)
+      for parent, children in tree_features['structure'].items():
+        for child in children:
+          adj_matrix[parent, child] += 1.0
+
+    most_common_parents = adj_matrix.argmax(axis=0)
+    return most_common_parents
+
 def intmode(iter):
   return int(stats.mode(iter)[0][0])
 
 def main():
-  parser = argparse.ArgumentParser(description='Hooray')
+  parser = argparse.ArgumentParser(
+    description='Write SMC-Het Challenge outputs',
+		formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+  )
   parser.add_argument('--min-ssms', dest='min_ssms', type=int, default=3,
     help='Minimum number of SSMs to retain a subclone')
   parser.add_argument('tree_summary',
@@ -421,29 +447,9 @@ def main():
     help='JSON-formatted list of SSMs and CNVs assigned to each subclone')
   parser.add_argument('output_dir',
     help='Directory in which to save Challenge outputs')
-
   args = parser.parse_args()
 
-  import pickle
-  lolpath = '/home/q/qmorris/jawinter/scratch/pwgs/tmp/lolstats'
-  #with open(lolpath, 'w') as fout:
-    #loader = ResultLoader(args.tree_summary, args.mutation_list, args.mutation_assignment, args.min_ssms)
-    #pickle.dump(loader, fout)
-  with open(lolpath) as fout:
-    loader = pickle.load(fout)
-
-  coassc = CoassignmentComputer(loader)
-  coass_matrix = coassc.compute_coassignments()
-  with open(os.path.join(args.output_dir, '2B.txt'), 'w') as outf:
-    np.savetxt(outf, coass_matrix, newline='\n')
-  return
-
-  ssmrc = SsmRelationComputer(loader)
-  anc_desc = ssmrc.compute_ancestor_desc()
-
-  with open(os.path.join(args.output_dir, '3B.txt'), 'w') as outf:
-    np.savetxt(outf, anc_desc, newline='\n')
-  return
+  loader = ResultLoader(args.tree_summary, args.mutation_list, args.mutation_assignment, args.min_ssms)
 
   ssc = SubcloneStatsComputer(loader.tree_summary)
   ssc.calc()
@@ -459,5 +465,24 @@ def main():
   with open(os.path.join(args.output_dir, '2A.txt'), 'w') as outf:
     for ssm_id, cluster in cmc.calc():
       print(ssm_id, cluster, sep='\t', file=outf)
+
+  coassc = CoassignmentComputer(loader)
+  coass_matrix = coassc.compute_coassignments()
+  with open(os.path.join(args.output_dir, '2B.txt.gz'), 'w') as outf:
+    np.savetxt(outf, coass_matrix, newline='\n')
+
+  nrc = NodeRelationComputer(loader, ssc.cancer_pops)
+  parents = nrc.compute_relations()
+  with open(os.path.join(args.output_dir, '3A.txt'), 'w') as outf:
+    for child, parent in enumerate(parents):
+      # Root node doesn't have a parent, so this value will be meaningless.
+      if child == 0:
+        continue
+      print(child, parent, sep='\t', file=outf)
+
+  ssmrc = SsmRelationComputer(loader)
+  anc_desc = ssmrc.compute_ancestor_desc()
+  with open(os.path.join(args.output_dir, '3B.txt.gz'), 'w') as outf:
+    np.savetxt(outf, anc_desc, newline='\n')
 
 main()
