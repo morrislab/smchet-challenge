@@ -9,8 +9,8 @@ import util2
 import zipfile
 from collections import defaultdict
 
-def summarize_subclones(tree):
-  subclones = {}
+def summarize_pops(tree):
+  pops = {}
   structure = defaultdict(list)
   mut_assignments = {'mut_assignments': defaultdict(lambda: {'cnvs': [], 'ssms': []})}
   idx = [0]
@@ -36,19 +36,21 @@ def summarize_subclones(tree):
 
     # Preorder traversal is consistent with printo_latex.py, meaning index
     # values should correspond to same vertices.
-    subclones[current_idx] = {
+    pops[current_idx] = {
       'phi': phi,
       'num_ssms': num_ssms,
       'num_cnvs': num_cnvs,
     }
 
-    for child in vertex.children():
+    # Visit children in order of decreasing phi.
+    children = sorted(vertex.children(), key = lambda v: np.mean(v.params), reverse=True)
+    for child in children:
       idx[0] += 1
       structure[current_idx].append(idx[0])
       _traverse_r(child, current_idx)
 
   _traverse_r(tree.root['node'], None)
-  return (subclones, mut_assignments, structure)
+  return (pops, mut_assignments, structure)
 
 def parse_json(fin):
   with open(fin) as fh:
@@ -111,12 +113,12 @@ def write_json(dataset_name, tree_file, num_trees, summaries_output, mutation_ou
   reader = util2.TreeReader(tree_file)
   with zipfile.ZipFile(mutation_assignment_output, 'w', compression=zipfile.ZIP_DEFLATED) as muts_file:
     for idx, llh, tree in reader.load_trees_and_metadata(num_trees = num_trees, remove_empty_vertices = True):
-      subclones, muts, structure = summarize_subclones(tree)
+      pops, muts, structure = summarize_pops(tree)
 
       summaries['trees'][idx] = {
         'llh': llh,
         'structure': structure,
-        'subclones': subclones,
+        'populations': pops,
       }
 
       muts['dataset_name'] = dataset_name
