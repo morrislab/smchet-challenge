@@ -79,9 +79,22 @@ class ResultLoader(object):
       del self.tree_summary[tree_idx]['populations'][subclone_idx]
 
       if subclone_idx in self.tree_summary[tree_idx]['structure']:
-        children = self.tree_summary[tree_idx]['structure'][subclone_idx]
-        children = [self._subclone_idx_map[tree_idx][c] if c in self._subclone_idx_map[tree_idx] else c for c in children]
-        self.tree_summary[tree_idx]['structure'][new_idx] = children
+        self.tree_summary[tree_idx]['structure'][new_idx] = self.tree_summary[tree_idx]['structure'][subclone_idx]
+
+    # We must also renumber children in the structure -- just renumbering
+    # parents isn't enough.
+    for subclone_idx in sorted(subclone_idxs):
+      # Node has no children.
+      if subclone_idx not in self.tree_summary[tree_idx]['structure']:
+        continue
+      children = self.tree_summary[tree_idx]['structure'][subclone_idx]
+      children = [
+        self._subclone_idx_map[tree_idx][c]
+        if c in self._subclone_idx_map[tree_idx]
+        else c
+        for c in children
+      ]
+      self.tree_summary[tree_idx]['structure'][subclone_idx] = children
 
   def _remove_small_nodes(self, tree_idx, populations):
     small_nodes = set()
@@ -421,7 +434,6 @@ class NodeRelationComputer(object):
       # Only examine populations with mode number of nodes.
       if len(tree_features['populations']) - 1 != self._num_cancer_pops:
         continue
-      print(len(tree_features['populations']), self._num_cancer_pops, len(tree_features['structure']), tree_features['structure'], tree_idx)
       for parent, children in tree_features['structure'].items():
         for child in children:
           adj_matrix[parent, child] += 1.0
@@ -485,4 +497,5 @@ def main():
   with open(os.path.join(args.output_dir, '3B.txt.gz'), 'w') as outf:
     np.savetxt(outf, anc_desc, newline='\n')
 
-main()
+if __name__ == '__main__':
+  main()
