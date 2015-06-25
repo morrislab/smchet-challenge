@@ -437,7 +437,7 @@ def main():
 
   cmc = ClusterMembershipComputer(ssc.cancer_pops, loader)
   with open(os.path.join(args.output_dir, '2A.txt'), 'w') as outf:
-    for ssm_id, cluter in cmc.calc():
+    for ssm_id, cluster in cmc.calc():
       print(ssm_id, cluster, sep='\t', file=outf)
 
   ssmrc = SsmRelationComputer(loader)
