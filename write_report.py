@@ -308,25 +308,32 @@ class SubcloneStatsComputer(object):
     return rounded
 
 class ClusterMembershipComputer(object):
-  def __init__(self, num_cancer_pops, loader):
-    self._num_cancer_pops = num_cancer_pops
+  def __init__(self, loader, subclone_stats):
     self._loader = loader
+    self._subclone_stats = subclone_stats
 
   def calc(self):
-    membership_counts = np.zeros((self._loader.num_ssms, self._num_cancer_pops))
-    counter = 0
+    assignments = {}
 
-    for tree_idx, mutass in self._loader.load_all_mut_assignments():
-      L = [len(l['ssms']) for l in mutass.values()]
-      if len(mutass) != self._num_cancer_pops:
-        continue
-      counter += 1
-      for subclone_idx, muts in mutass.items():
-        ssm_idxs = [int(s['id'][1:]) for s in muts['ssms']]
-        membership_counts[ssm_idxs, subclone_idx - 1] += 1
+    # Binomial assignment won't work for areas of altered copy number, where
+    # phi/2 is no longer the correct fraction of chromatids carrying the
+    # mutation.
+    for ssm_id, ssm in self._loader.mutlist['ssms'].items():
+      d, a  = np.mean(ssm['total_reads']), np.mean(ssm['ref_reads'])
+      ssm_idx = int(ssm_id[1:])
 
-    assignments = membership_counts.argmax(axis=1) + 1
-    return [('s%s' % idx, assignment) for idx, assignment in enumerate(assignments)]
+      best_pop = None
+      best_prob = float('-inf')
+      for cancer_pop_idx, phi in enumerate(self._subclone_stats.phis):
+        prob = stats.binom.logpmf(d - a, d, phi / 2)
+        if prob > best_prob:
+          best_prob = prob
+          best_pop = cancer_pop_idx
+      assignments[ssm_idx] = best_pop
+
+    idxs = sorted(assignments.keys())
+    for ssm_idx in idxs:
+      yield ('s%s' % ssm_idx, assignments[ssm_idx] + 1)
 
 class CoassignmentComputer(object):
   def __init__(self, loader):
@@ -473,7 +480,7 @@ def main():
     for cluster_num, (num_ssms, phi) in enumerate(zip(ssc.num_ssms, ssc.phis)):
       print(cluster_num + 1, num_ssms, phi, sep='\t', file=outf)
 
-  cmc = ClusterMembershipComputer(ssc.cancer_pops, loader)
+  cmc = ClusterMembershipComputer(loader, ssc)
   with open(os.path.join(args.output_dir, '2A.txt'), 'w') as outf:
     for ssm_id, cluster in cmc.calc():
       print(ssm_id, cluster, sep='\t', file=outf)
