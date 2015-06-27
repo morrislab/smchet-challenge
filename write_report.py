@@ -478,8 +478,9 @@ def main():
 
   cmc = ClusterMembershipComputer(loader, ssc)
   with open(os.path.join(args.output_dir, '2A.txt'), 'w') as outf:
+    # These will be in sorted order, so nth row refers to SSM with ID "s{n - 1}".
     for ssm_id, cluster in cmc.calc():
-      print(ssm_id, cluster, sep='\t', file=outf)
+      print(cluster, file=outf)
 
   coassc = CoassignmentComputer(loader)
   coass_matrix = coassc.compute_coassignments()
