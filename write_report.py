@@ -484,8 +484,7 @@ def main():
 
   coassc = CoassignmentComputer(loader)
   coass_matrix = coassc.compute_coassignments()
-  with open(os.path.join(args.output_dir, '2B.txt.gz'), 'w') as outf:
-    np.savetxt(outf, coass_matrix, newline='\n')
+  np.savetxt(os.path.join(args.output_dir, '2B.txt.gz'), coass_matrix)
 
   nrc = NodeRelationComputer(loader, ssc.cancer_pops)
   parents = nrc.compute_relations()
@@ -498,8 +497,7 @@ def main():
 
   ssmrc = SsmRelationComputer(loader)
   anc_desc = ssmrc.compute_ancestor_desc()
-  with open(os.path.join(args.output_dir, '3B.txt.gz'), 'w') as outf:
-    np.savetxt(outf, anc_desc, newline='\n')
+  np.savetxt(os.path.join(args.output_dir, '3B.txt.gz'), anc_desc)
 
 if __name__ == '__main__':
   main()
