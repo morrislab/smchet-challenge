@@ -346,8 +346,6 @@ class CoassignmentComputer(object):
 
     for tree_idx, mut_assignments in self._loader.load_all_mut_assignments():
       num_trees += 1
-      if num_trees > 5:
-        break
       for subclone_idx, muts in mut_assignments.items():
         ssms = muts['ssms']
         for ssm1, ssm2 in itertools.combinations(ssms, 2):
@@ -392,8 +390,6 @@ class SsmRelationComputer(object):
 
     for tree_idx, mut_assignments in self._loader.load_all_mut_assignments():
       num_trees += 1
-      if num_trees > 5:
-        break
       vert_relations = self._determine_vertex_relations(self._loader.tree_summary[tree_idx]['structure'])
 
       ssm_assignment_map = {}
