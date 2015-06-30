@@ -58,20 +58,23 @@ class ResultLoader(object):
           subclone['num_%s' % mut_type] = len(mutass[sidx][mut_type])
 
   def _renumber_nodes(self, tree_idx):
-    subclone_idxs = self.tree_summary[tree_idx]['populations'].keys()
+    subclone_idxs = sorted(self.tree_summary[tree_idx]['populations'].keys())
 
     num_removed = 0
+    # We may have removed populations beyond max(subclone_idxs), but as these
+    # occurred *after* the highest-indexed of the remaining populations, so
+    # renumbering is necessary for them.
     for subclone_idx in range(1, max(subclone_idxs) + 1):
       if subclone_idx not in self.tree_summary[tree_idx]['populations']:
         num_removed += 1
-        continue
-      if num_removed > 0:
+      elif num_removed > 0:
         self._subclone_idx_map[tree_idx][subclone_idx] = subclone_idx - num_removed
 
     # By proceeding in sorted order, we guarantee we're not overwriting a
     # single element twice, which would give the wrong values.
-    for subclone_idx in sorted(subclone_idxs):
+    for subclone_idx in subclone_idxs:
       if subclone_idx not in self._subclone_idx_map[tree_idx]:
+        # Node was removed, so do nothing.
         continue
       new_idx = self._subclone_idx_map[tree_idx][subclone_idx]
 
@@ -80,21 +83,17 @@ class ResultLoader(object):
 
       if subclone_idx in self.tree_summary[tree_idx]['structure']:
         self.tree_summary[tree_idx]['structure'][new_idx] = self.tree_summary[tree_idx]['structure'][subclone_idx]
+        del self.tree_summary[tree_idx]['structure'][subclone_idx]
 
     # We must also renumber children in the structure -- just renumbering
     # parents isn't enough.
-    for subclone_idx in sorted(subclone_idxs):
-      # Node has no children.
-      if subclone_idx not in self.tree_summary[tree_idx]['structure']:
-        continue
-      children = self.tree_summary[tree_idx]['structure'][subclone_idx]
-      children = [
+    for subclone_idx, children in self.tree_summary[tree_idx]['structure'].items():
+      self.tree_summary[tree_idx]['structure'][subclone_idx] = [
         self._subclone_idx_map[tree_idx][c]
         if c in self._subclone_idx_map[tree_idx]
         else c
         for c in children
       ]
-      self.tree_summary[tree_idx]['structure'][subclone_idx] = children
 
   def _remove_small_nodes(self, tree_idx, populations):
     small_nodes = set()
@@ -148,6 +147,8 @@ class ResultLoader(object):
       tree_structure[parent].sort()
 
     for rem in removed:
+      # "rem" won't be present if it has no children, so this check is
+      # necessary.
       if rem in tree_structure:
         del tree_structure[rem]
 
@@ -259,6 +260,9 @@ class SubcloneStatsComputer(object):
 
       cancer_pop_counts.append(len(pops) - 1)
       clonal_idx = self._find_clonal_node(pops)
+      # clonal_idx should always be 1, given the renumbering I do to remove
+      # nonexistent nodes.
+      assert clonal_idx == 1
       cellularities.append(pops[clonal_idx]['phi'])
 
     self.cancer_pops = intmode(cancer_pop_counts)
@@ -465,39 +469,50 @@ def main():
   args = parser.parse_args()
 
   loader = ResultLoader(args.tree_summary, args.mutation_list, args.mutation_assignment, args.min_ssms)
+  outputs_to_write = set(('1A', '1B', '1C', '2A', '2B', '3A', '3B'))
 
+  # ssc is used for outputs 1A, 1B, 1C, 2A, and 3A, so always create it, since
+  # it will most likely be used by something.
   ssc = SubcloneStatsComputer(loader.tree_summary)
   ssc.calc()
-  with open(os.path.join(args.output_dir, '1A.txt'), 'w') as outf:
-    print(ssc.cellularity, file=outf)
-  with open(os.path.join(args.output_dir, '1B.txt'), 'w') as outf:
-    print(ssc.cancer_pops, file=outf)
-  with open(os.path.join(args.output_dir, '1C.txt'), 'w') as outf:
-    for cluster_num, (num_ssms, phi) in enumerate(zip(ssc.num_ssms, ssc.phis)):
-      print(cluster_num + 1, num_ssms, phi, sep='\t', file=outf)
 
-  cmc = ClusterMembershipComputer(loader, ssc)
-  with open(os.path.join(args.output_dir, '2A.txt'), 'w') as outf:
-    # These will be in sorted order, so nth row refers to SSM with ID "s{n - 1}".
-    for ssm_id, cluster in cmc.calc():
-      print(cluster, file=outf)
+  if '1A' in outputs_to_write:
+    with open(os.path.join(args.output_dir, '1A.txt'), 'w') as outf:
+      print(ssc.cellularity, file=outf)
+  if '1B' in outputs_to_write:
+    with open(os.path.join(args.output_dir, '1B.txt'), 'w') as outf:
+      print(ssc.cancer_pops, file=outf)
+  if '1C' in outputs_to_write:
+    with open(os.path.join(args.output_dir, '1C.txt'), 'w') as outf:
+      for cluster_num, (num_ssms, phi) in enumerate(zip(ssc.num_ssms, ssc.phis)):
+        print(cluster_num + 1, num_ssms, phi, sep='\t', file=outf)
 
-  coassc = CoassignmentComputer(loader)
-  coass_matrix = coassc.compute_coassignments()
-  np.savetxt(os.path.join(args.output_dir, '2B.txt.gz'), coass_matrix)
+  if '2A' in outputs_to_write:
+    cmc = ClusterMembershipComputer(loader, ssc)
+    with open(os.path.join(args.output_dir, '2A.txt'), 'w') as outf:
+      # These will be in sorted order, so nth row refers to SSM with ID "s{n - 1}".
+      for ssm_id, cluster in cmc.calc():
+        print(cluster, file=outf)
 
-  nrc = NodeRelationComputer(loader, ssc.cancer_pops)
-  parents = nrc.compute_relations()
-  with open(os.path.join(args.output_dir, '3A.txt'), 'w') as outf:
-    for child, parent in enumerate(parents):
-      # Root node doesn't have a parent, so this value will be meaningless.
-      if child == 0:
-        continue
-      print(child, parent, sep='\t', file=outf)
+  if '2B' in outputs_to_write:
+    coassc = CoassignmentComputer(loader)
+    coass_matrix = coassc.compute_coassignments()
+    np.savetxt(os.path.join(args.output_dir, '2B.txt.gz'), coass_matrix)
 
-  ssmrc = SsmRelationComputer(loader)
-  anc_desc = ssmrc.compute_ancestor_desc()
-  np.savetxt(os.path.join(args.output_dir, '3B.txt.gz'), anc_desc)
+  if '3A' in outputs_to_write:
+    nrc = NodeRelationComputer(loader, ssc.cancer_pops)
+    parents = nrc.compute_relations()
+    with open(os.path.join(args.output_dir, '3A.txt'), 'w') as outf:
+      for child, parent in enumerate(parents):
+        # Root node doesn't have a parent, so this value will be meaningless.
+        if child == 0:
+          continue
+        print(child, parent, sep='\t', file=outf)
+
+  if '3B' in outputs_to_write:
+    ssmrc = SsmRelationComputer(loader)
+    anc_desc = ssmrc.compute_ancestor_desc()
+    np.savetxt(os.path.join(args.output_dir, '3B.txt.gz'), anc_desc)
 
 if __name__ == '__main__':
   main()
