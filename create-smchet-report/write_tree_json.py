@@ -9,7 +9,7 @@ import util2
 import zipfile
 from collections import defaultdict
 
-def summarize_pops(tree):
+def summarize_pops(tree, include_ssm_names):
   pops = {}
   structure = defaultdict(list)
   mut_assignments = {'mut_assignments': defaultdict(lambda: {'cnvs': [], 'ssms': []})}
@@ -26,7 +26,10 @@ def summarize_pops(tree):
     num_cnvs = 0
     for mut in mutations:
       if mut.id.startswith('s'):
-        mut_assignments['mut_assignments'][current_idx]['ssms'].append({'id': mut.id, 'name': mut.name})
+        mut_data = {'id': mut.id}
+        if include_ssm_names:
+          mut_data['name'] = mut.name
+        mut_assignments['mut_assignments'][current_idx]['ssms'].append(mut_data)
         num_ssms += 1
       elif mut.id.startswith('c'):
         mut_assignments['mut_assignments'][current_idx]['cnvs'].append({'id': mut.id})
@@ -56,7 +59,7 @@ def parse_json(fin):
   with open(fin) as fh:
     return json.load(fh)
 
-def extract_mutations(tree):
+def extract_mutations(tree, include_ssm_names):
   cnvs = {}
   ssms = {}
   ssms_in_cnvs = defaultdict(list)
@@ -65,12 +68,14 @@ def extract_mutations(tree):
     for mut in node['node'].get_data():
       if mut.id.startswith('s'):
         ssms[mut.id] = {
-          'name': mut.name,
           'ref_reads': mut.a,
           'total_reads': mut.d,
           'mu_r': mut.mu_r,
           'mu_v': mut.mu_v
         }
+        if include_ssm_names:
+          ssms[mut.id]['name'] = mut.name
+
         for cnv, maternal_cn, paternal_cn in mut.cnv:
           ssms_in_cnvs[cnv.id].append({
             'ssm_id': mut.id,
@@ -96,7 +101,7 @@ def extract_mutations(tree):
     'cnvs': cnvs,
   }
 
-def write_json(dataset_name, tree_file, num_trees, summaries_output, mutation_output, mutation_assignment_output):
+def write_json(dataset_name, tree_file, num_trees, include_ssm_names, summaries_output, mutation_output, mutation_assignment_output):
   summaries = {
     'dataset_name': dataset_name,
     'trees': {},
@@ -105,7 +110,7 @@ def write_json(dataset_name, tree_file, num_trees, summaries_output, mutation_ou
   reader = util2.TreeReader(tree_file)
   first_tree = next(reader.load_trees())
   reader.close()
-  mutations = extract_mutations(first_tree)
+  mutations = extract_mutations(first_tree, include_ssm_names)
   mutations['dataset_name'] = dataset_name
   with gzip.GzipFile(mutation_output, 'w') as mutf:
     json.dump(mutations, mutf)
@@ -113,7 +118,7 @@ def write_json(dataset_name, tree_file, num_trees, summaries_output, mutation_ou
   reader = util2.TreeReader(tree_file)
   with zipfile.ZipFile(mutation_assignment_output, 'w', compression=zipfile.ZIP_DEFLATED) as muts_file:
     for idx, llh, tree in reader.load_trees_and_metadata(num_trees = num_trees, remove_empty_vertices = True):
-      pops, muts, structure = summarize_pops(tree)
+      pops, muts, structure = summarize_pops(tree, include_ssm_names)
 
       summaries['trees'][idx] = {
         'llh': llh,
@@ -135,6 +140,8 @@ def main():
   )
   parser.add_argument('--num-trees', '-n', dest='num_trees', type=int,
     help='Only examine given number of trees')
+  parser.add_argument('--include-ssm-names', dest='include_ssm_names', action='store_true',
+    help='Include SSM names in output (which may be sensitive data)')
   parser.add_argument('dataset_name',
     help='Name identifying dataset')
   parser.add_argument('tree_file',
@@ -147,7 +154,7 @@ def main():
     help='Output file for JSON-formatted list of SSMs and CNVs assigned to each subclone')
   args = parser.parse_args()
 
-  write_json(args.dataset_name, args.tree_file, args.num_trees, args.tree_summary_output, args.mutation_output, args.mutation_assignment_output)
+  write_json(args.dataset_name, args.tree_file, args.num_trees, args.include_ssm_names, args.tree_summary_output, args.mutation_output, args.mutation_assignment_output)
 
 if __name__ == '__main__':
   main()
