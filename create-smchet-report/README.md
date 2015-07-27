@@ -71,3 +71,13 @@ Challenge-outputs writer:
     optional arguments:
       -h, --help           show this help message and exit
       --min-ssms MIN_SSMS  Minimum number of SSMs to retain a subclone (default: 3)
+
+Outputs
+=======
+`1A.txt`: Inferred cellularity of the sample
+`1B.txt`: Best guess for number of cancerous populations
+`1C.txt`: For each cluster, 3 columns: the cluster number (starting from 1),  the typical number of ssms assigned to it and the phi value of the cluster.  
+`2A.txt`: Assignment of SSMs to clusters. Row i indicates will list the cluster index for SSM number i (i.e., the SSM with the identifier "s<i - 1>").
+`2B.txt`: Full NxN co-clustering matrix
+`3A.txt`: For each of the best guess clusters, 2 columns: cluster ID and the cluster ID of its parent (0 is root node)
+`3B.txt`: NxN Ancestor-decedent matrix. Entry i,j = The probability that i is in node that is an ancestor of node containing j. 
