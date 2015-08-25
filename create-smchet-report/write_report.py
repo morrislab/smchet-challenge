@@ -30,7 +30,8 @@ class ResultLoader(object):
 
   def _load_tree_data(self):
     with gzip.GzipFile(self._tree_summary_fn) as treesummf:
-      self.tree_summary = json.load(treesummf)['trees']
+      tree_json = json.load(treesummf)
+      self.tree_summary = tree_json['trees']
     self._convert_keys_to_ints(self.tree_summary)
     for tree_idx, tree_features in self.tree_summary.items():
       self._convert_keys_to_ints(tree_features['populations'])
@@ -102,6 +103,13 @@ class ResultLoader(object):
     last_phi = None
     last_idx = None
 
+    if self._min_ssms >= 1:
+      # This is a count of SSMs, so use it without adjustment (but ensure it's an int).
+      min_ssms = int(self._min_ssms)
+    else:
+      # This is a fraction of total SSMs.
+      min_ssms = int(round(self._min_ssms * self.num_ssms))
+
     for subclone_idx in subclone_idxs:
       for p, children in self.tree_summary[tree_idx]['structure'].items():
         if subclone_idx in children:
@@ -114,7 +122,7 @@ class ResultLoader(object):
       last_phi = subclone['phi']
       last_idx = subclone_idx
 
-      if subclone_idx == 0 or subclone['num_ssms'] >= self._min_ssms:
+      if subclone_idx == 0 or subclone['num_ssms'] >= min_ssms:
         continue
       small_nodes.add(subclone_idx)
 
@@ -159,6 +167,10 @@ class ResultLoader(object):
         mut_stats = self.mutlist[mut_type][mut_id]
         ref_reads = np.mean(mut_stats['ref_reads'])
         total_reads = np.mean(mut_stats['total_reads'])
+        # Note this doesn't take into account CNVs that may skew the
+        # relationship between VAF and phi -- we assume that there is one
+        # maternal and one paternal copy, and that only one of these is
+        # mutated.
         implied_phi = 2 * (total_reads - ref_reads) / total_reads
         implied_phi = min(implied_phi, 1.0)
 
@@ -292,7 +304,7 @@ class SubcloneStatsComputer(object):
     rounding errors equitably amongst members.'''
     rounded = np.rint(arr)
     rerr = np.sum(rounded - arr)
-    assert np.isclose(np.rint(rerr), rerr)
+    assert np.isclose(np.rint(rerr), rerr), '%s %s' % (np.rint(rerr), rerr)
 
     # Correct rounding error by subtracting 1 from the largest node, then
     # moving on to the next and continuing until no error remains. Assuming
