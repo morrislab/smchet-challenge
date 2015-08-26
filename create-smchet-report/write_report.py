@@ -31,6 +31,8 @@ class ResultLoader(object):
   def _load_tree_data(self):
     with gzip.GzipFile(self._tree_summary_fn) as treesummf:
       tree_json = json.load(treesummf)
+      # This is used by the munge_json.py script.
+      self.dataset_name = tree_json['dataset_name']
       self.tree_summary = tree_json['trees']
     self._convert_keys_to_ints(self.tree_summary)
     for tree_idx, tree_features in self.tree_summary.items():
@@ -468,7 +470,7 @@ def main():
     description='Write SMC-Het Challenge outputs',
 		formatter_class=argparse.ArgumentDefaultsHelpFormatter,
   )
-  parser.add_argument('--min-ssms', dest='min_ssms', type=int, default=3,
+  parser.add_argument('--min-ssms', dest='min_ssms', type=float, default=0.01,
     help='Minimum number of SSMs to retain a subclone')
   parser.add_argument('tree_summary',
     help='JSON-formatted tree summaries')
