@@ -353,6 +353,20 @@ class ClusterMembershipComputer(object):
     for ssm_idx in idxs:
       yield ('s%s' % ssm_idx, assignments[ssm_idx] + 1)
 
+class SsmAssignmentComputer(object):
+  def __init__(self, loader):
+    self._loader = loader
+
+  def compute_ssm_assignments(self):
+    num_ssms = self._loader.num_ssms
+    for tree_idx, mut_assignments in self._loader.load_all_mut_assignments():
+      num_pops = len(mut_assignments)
+      ssm_ass = np.zeros((num_ssms, num_pops))
+      for subclone_idx, muts in mut_assignments.items():
+        ssm_ids = [int(ssm['id'][1:]) for ssm in muts['ssms']]
+        ssm_ass[ssm_ids, subclone_idx - 1] = 1.0
+        yield (tree_idx, ssm_ass)
+
 class CoassignmentComputer(object):
   def __init__(self, loader):
     self._loader = loader
@@ -361,16 +375,11 @@ class CoassignmentComputer(object):
     num_ssms = self._loader.num_ssms
     coass = np.zeros((num_ssms, num_ssms))
     num_trees = 0
+    ssm_ass = SsmAssignmentComputer(self._loader)
 
-    for tree_idx, mut_assignments in self._loader.load_all_mut_assignments():
+    for tree_idx, ssm_ass in ssm_ass.compute_ssm_assignments():
       num_trees += 1
-      num_pops = len(mut_assignments)
-      tree_coass = np.zeros((num_ssms, num_pops))
-      for subclone_idx, muts in mut_assignments.items():
-        ssm_ids = [int(ssm['id'][1:]) for ssm in muts['ssms']]
-        tree_coass[ssm_ids, subclone_idx - 1] = 1.0
-      coass += np.dot(tree_coass, tree_coass.T)
-
+      coass += np.dot(ssm_ass, ssm_ass.T)
     coass /= num_trees
     return coass
 
@@ -378,63 +387,34 @@ class SsmRelationComputer(object):
   def __init__(self, loader):
     self._loader = loader
 
-  class VertexRelation(object):
-    ancestor_desc = 1
-    desc_ancestor = 2
-    sibling       = 3
-
-  def _determine_vertex_relations(self, tree_structure):
-    relations = defaultdict(lambda: self.VertexRelation.sibling)
-
+  def _determine_node_ancestry(self, tree_structure, num_pops):
+    node_ancestry = np.zeros((num_pops, num_pops))
     def _mark_desc(par, desc):
       for descendant in desc:
-        relations[(par, descendant)] = self.VertexRelation.ancestor_desc
-        relations[(descendant, par)] = self.VertexRelation.desc_ancestor
+        node_ancestry[par - 1, descendant - 1] = 1
         if descendant in tree_structure:
           _mark_desc(par, tree_structure[descendant])
-
     for parent, children in tree_structure.items():
       _mark_desc(parent, children)
-
-    return relations
+    return node_ancestry
 
   def compute_ancestor_desc(self):
+    ssm_ass = SsmAssignmentComputer(self._loader)
     num_ssms = self._loader.num_ssms
-    ancestor_desc = np.zeros((self._loader.num_ssms, num_ssms))
+    ancestor_desc = np.zeros((num_ssms, num_ssms))
     num_trees = 0
 
-    for tree_idx, mut_assignments in self._loader.load_all_mut_assignments():
+    for tree_idx, ssm_ass in ssm_ass.compute_ssm_assignments():
       num_trees += 1
-      vert_relations = self._determine_vertex_relations(self._loader.tree_summary[tree_idx]['structure'])
+      tree_summ = self._loader.tree_summary[tree_idx]
+      structure = tree_summ['structure']
+      num_pops = ssm_ass.shape[1]
+      node_ancestry = self._determine_node_ancestry(structure, num_pops)
 
-      ssm_assignment_map = {}
-      for subclone_idx, muts in mut_assignments.items():
-        for ssm in muts['ssms']:
-          ssm_assignment_map[ssm['id']] = subclone_idx
-
-      # Working with a list is faster than a dict, despite the former having O(n)
-      # lookup and the latter O(1). The Python list is also faster than a NumPy
-      # array. See
-      # http://stackoverflow.com/questions/22239199/numpy-array-indexing-and-or-addition-seems-slow
-      ssm_assignments = []
-      last_idx = -1
-      for ssm_idx in sorted([int(s[1:]) for s in ssm_assignment_map.keys()]):
-        assert ssm_idx == last_idx + 1
-        last_idx = ssm_idx
-        ssm_assignments.append(ssm_assignment_map['s%s' % ssm_idx])
-      assert len(ssm_assignments) == num_ssms
-
-      ssm_combos = itertools.combinations(range(num_ssms), 2)
-      for ssm1_idx, ssm2_idx in ssm_combos:
-        ssm1_subclone = ssm_assignments[ssm1_idx]
-        ssm2_subclone = ssm_assignments[ssm2_idx]
-
-        if ssm1_subclone == ssm2_subclone:
-          continue
-        if vert_relations[(ssm1_subclone, ssm2_subclone)] == self.VertexRelation.ancestor_desc:
-          ancestor_desc[ssm1_idx, ssm2_idx] += 1.0
-        if vert_relations[(ssm1_subclone, ssm2_subclone)] == self.VertexRelation.desc_ancestor:
-          ancestor_desc[ssm2_idx, ssm1_idx] += 1.0
+      ssm_ancestry = np.dot(ssm_ass, node_ancestry)
+      # ADM: ancestor-descendant matrix
+      tree_adm = np.dot(ssm_ancestry, ssm_ass.T)
+      ancestor_desc += tree_adm
 
     ancestor_desc /= num_trees
     return ancestor_desc

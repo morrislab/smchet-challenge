@@ -12,6 +12,10 @@ from collections import defaultdict
 def summarize_pops(tree, include_ssm_names):
   pops = {}
   structure = defaultdict(list)
+  # Note that there will be an entry in mut_assignments for a given subclone
+  # only if it has at least one SSM or CNV. This assumption holds true for all
+  # PhyloWGS trees, so one can ascertain the number of cancerous populations
+  # via len(mut_assignments).
   mut_assignments = {'mut_assignments': defaultdict(lambda: {'cnvs': [], 'ssms': []})}
   idx = [0]
 
