@@ -357,26 +357,21 @@ class CoassignmentComputer(object):
   def __init__(self, loader):
     self._loader = loader
 
-  def _symmetrize(self, A):
-    return A + A.T - np.diag(A.diagonal())
-
   def compute_coassignments(self):
     num_ssms = self._loader.num_ssms
     coass = np.zeros((num_ssms, num_ssms))
     num_trees = 0
-    increase = np.float64(1.0)
 
     for tree_idx, mut_assignments in self._loader.load_all_mut_assignments():
       num_trees += 1
+      num_pops = len(mut_assignments)
+      tree_coass = np.zeros((num_ssms, num_pops))
       for subclone_idx, muts in mut_assignments.items():
         ssm_ids = [int(ssm['id'][1:]) for ssm in muts['ssms']]
-        for ssm1_id, ssm2_id in itertools.combinations(ssm_ids, 2):
-          coass[ssm1_id, ssm2_id] += increase
+        tree_coass[ssm_ids, subclone_idx - 1] = 1.0
+      coass += np.dot(tree_coass, tree_coass.T)
 
-    coass = self._symmetrize(coass)
     coass /= num_trees
-    # Set diagonal to 1
-    coass += np.diag(np.ones(num_ssms))
     return coass
 
 class SsmRelationComputer(object):
