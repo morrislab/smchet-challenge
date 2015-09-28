@@ -136,31 +136,26 @@ class ResultLoader(object):
     return small_nodes
 
   def _remove_nodes_from_tree_structure(self, removed, tree_structure):
+    def _find_parent(struct, idx):
+      for parent, children in struct.items():
+        if idx in children:
+          return parent
+      raise Exception('Could not find parent of %s in %s' % (idx, struct))
+
     removed = set(removed)
-
-    for parent, children in tree_structure.items():
-      to_remove = []
-      to_add = []
-
-      for child in children:
-        if child not in removed:
-          continue
-        if child in tree_structure:
-          grandchildren = tree_structure[child]
-          to_add += grandchildren
-        to_remove.append(child)
-
-      tree_structure[parent] = [
-        node for node in (tree_structure[parent] + to_add)
-        if node not in removed
-      ]
-      tree_structure[parent].sort()
-
     for rem in removed:
-      # "rem" won't be present if it has no children, so this check is
-      # necessary.
+      parent = _find_parent(tree_structure, rem)
+      # Remove node from parent
+      tree_structure[parent] = [c for c in tree_structure[parent] if c != rem]
+      # Assign removed node's children to their grandparent
       if rem in tree_structure:
+        tree_structure[parent] += tree_structure[rem]
         del tree_structure[rem]
+      # Sort, since order may not be preserved.
+      tree_structure[parent].sort()
+      # If no children remain after deletion, remove child list from tree.
+      if len(tree_structure[parent]) == 0:
+        del tree_structure[parent]
 
   def _move_muts_to_best_node(self, muts, mutass, populations):
     for mut_type in ('ssms', 'cnvs'):
@@ -192,6 +187,10 @@ class ResultLoader(object):
 
     for sidx in sorted(self._subclone_idx_map[tree_idx].keys()):
       new_idx = self._subclone_idx_map[tree_idx][sidx]
+
+      # This ensures we're not improperly overwriting assignments.
+      assert new_idx < sidx
+
       if new_idx is None: # Node was removed.
         deleted_muts.append(mutass[sidx])
       else:
