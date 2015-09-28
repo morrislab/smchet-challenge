@@ -121,7 +121,7 @@ class SsmAssignmentComputer(object):
       num_pops = len(mut_assignments)
       ssm_ass = np.zeros((num_ssms, num_pops))
       for subclone_idx, muts in mut_assignments.items():
-        ssm_ids = [int(ssm['id'][1:]) for ssm in muts['ssms']]
+        ssm_ids = [int(ssm[1:]) for ssm in muts['ssms']]
         ssm_ass[ssm_ids, subclone_idx - 1] = 1.0
         yield (tree_idx, ssm_ass)
 
