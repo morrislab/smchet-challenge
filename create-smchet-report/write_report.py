@@ -35,7 +35,7 @@ class SubcloneStatsComputer(object):
       # clonal_idx should always be 1, given the renumbering I do to remove
       # nonexistent nodes.
       assert clonal_idx == 1
-      cellularities.append(pops[clonal_idx]['cellular_prevalence'])
+      cellularities.append(np.mean(pops[clonal_idx]['cellular_prevalence']))
 
     self.cancer_pops = intmode(cancer_pop_counts)
     self.cellularity = np.mean(cellularities)
@@ -49,7 +49,7 @@ class SubcloneStatsComputer(object):
       pops = tree['populations']
       if len(pops) - 1 != K:
         continue
-      vals = [(pops[pidx]['cellular_prevalence'], pops[pidx]['num_ssms']) for pidx in sorted(pops.keys()) if pidx != 0]
+      vals = [(np.mean(pops[pidx]['cellular_prevalence']), pops[pidx]['num_ssms']) for pidx in sorted(pops.keys()) if pidx != 0]
       phis, num_ssms = zip(*vals)
       phis_sum += phis
       num_ssms_sum += num_ssms
@@ -95,7 +95,7 @@ class ClusterMembershipComputer(object):
     # phi/2 is no longer the correct fraction of chromatids carrying the
     # mutation.
     for ssm_id, ssm in self._loader.mutlist['ssms'].items():
-      d, a  = np.mean(ssm['total_reads']), np.mean(ssm['ref_reads'])
+      d, a  = int(np.round(np.mean(ssm['total_reads']))), int(np.round(np.mean(ssm['ref_reads'])))
       ssm_idx = int(ssm_id[1:])
 
       best_pop = None
