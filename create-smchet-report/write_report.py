@@ -176,6 +176,7 @@ class SsmRelationComputer(object):
       ancestor_desc += tree_adm
 
     ancestor_desc /= num_trees
+    np.fill_diagonal(ancestor_desc, 0)
     return ancestor_desc
 
 class NodeRelationComputer(object):
