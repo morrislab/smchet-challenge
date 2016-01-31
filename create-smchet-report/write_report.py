@@ -139,6 +139,7 @@ class CoassignmentComputer(object):
       num_trees += 1
       coass += np.dot(ssm_ass, ssm_ass.T)
     coass /= num_trees
+    np.fill_diagonal(coass, 1)
     return coass
 
 class SsmRelationComputer(object):
@@ -216,7 +217,8 @@ def main():
   args = parser.parse_args()
 
   loader = ResultLoader(args.tree_summary, args.mutation_list, args.mutation_assignment)
-  outputs_to_write = set(('1A', '1B', '1C', '2A', '2B', '3A', '3B'))
+  #outputs_to_write = set(('1A', '1B', '1C', '2A', '2B', '3A', '3B'))
+  outputs_to_write = set(('1A', '1B', '1C', '2A', '3A'))
 
   # ssc is used for outputs 1A, 1B, 1C, 2A, and 3A, so always create it, since
   # it will most likely be used by something.
