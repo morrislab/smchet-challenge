@@ -8,6 +8,11 @@ from pwgsresults.result_loader import ResultLoader
 class SubcloneStatsComputer(object):
   def __init__(self, tree_summary):
     self._tree_summary = tree_summary
+    # These parameters can be accessed by client code.
+    self.cancer_pops = None
+    self.cellularity = None
+    self.phis = None
+    self.num_ssms = None
 
   def calc(self):
     self._calc_global_stats()
@@ -30,6 +35,7 @@ class SubcloneStatsComputer(object):
       if len(pops) == 1:
         continue
 
+      # Subtract one to eliminate non-cancerous root node.
       cancer_pop_counts.append(len(pops) - 1)
       clonal_idx = self._find_clonal_node(pops)
       # clonal_idx should always be 1, given the renumbering I do to remove
@@ -49,7 +55,14 @@ class SubcloneStatsComputer(object):
       pops = tree['populations']
       if len(pops) - 1 != K:
         continue
-      vals = [(np.mean(pops[pidx]['cellular_prevalence']), pops[pidx]['num_ssms']) for pidx in sorted(pops.keys()) if pidx != 0]
+      # TODO: extend the format to handle cellular prevalences for multi-sample
+      # data. Current mean-taking behaviour is stupid.
+      vals = [(np.mean(pops[pidx]['cellular_prevalence']), pops[pidx]['num_ssms']) for pidx in pops.keys() if pidx != 0]
+      # Map nodes to one another by rank of descending cellular prevalence.
+      # This behaviour isn't ideal, but it's better than previous behaviour,
+      # when we just relied on the given node indices (assigned in JSON-writing
+      # code via depth-first traversal) as given.
+      vals = sorted(vals, key = lambda V: V[0], reverse = True)
       phis, num_ssms = zip(*vals)
       phis_sum += phis
       num_ssms_sum += num_ssms
@@ -89,27 +102,29 @@ class ClusterMembershipComputer(object):
     self._subclone_stats = subclone_stats
 
   def calc(self):
-    assignments = {}
+    K = self._subclone_stats.cancer_pops
+    num_ssms = self._loader.num_ssms
+    ssm_ass = np.zeros((num_ssms, K))
+    trees_examined = 0
 
-    # Binomial assignment won't work for areas of altered copy number, where
-    # phi/2 is no longer the correct fraction of chromatids carrying the
-    # mutation.
-    for ssm_id, ssm in self._loader.mutlist['ssms'].items():
-      d, a  = int(np.round(np.mean(ssm['total_reads']))), int(np.round(np.mean(ssm['ref_reads'])))
-      ssm_idx = int(ssm_id[1:])
+    for tree_idx, mut_assignments in self._loader.load_all_mut_assignments():
+      pops = self._loader.tree_summary[tree_idx]['populations']
+      num_cancer_pops = len(pops) - 1
+      if num_cancer_pops != K:
+        continue
 
-      best_pop = None
-      best_prob = float('-inf')
-      for cancer_pop_idx, phi in enumerate(self._subclone_stats.phis):
-        prob = stats.binom.logpmf(d - a, d, phi / 2)
-        if prob > best_prob:
-          best_prob = prob
-          best_pop = cancer_pop_idx
-      assignments[ssm_idx] = best_pop
+      pop_idxs = [pidx for pidx in pops.keys() if pidx != 0]
+      assert len(pop_idxs) == num_cancer_pops == K
+      assert set(pop_idxs) == set(range(1, K + 1))
+      pop_idxs = sorted(pop_idxs, key = lambda P: pops[P]['cellular_prevalence'], reverse = True)
+      for rank, pop_idx in enumerate(pop_idxs):
+        pop_ssms = mut_assignments[pop_idx]['ssms']
+        ssm_ids = [int(ssm[1:]) for ssm in pop_ssms]
+        ssm_ass[ssm_ids, rank] += 1
+      trees_examined += 1
 
-    idxs = sorted(assignments.keys())
-    for ssm_idx in idxs:
-      yield ('s%s' % ssm_idx, assignments[ssm_idx] + 1)
+    assert np.array_equal(np.sum(ssm_ass, axis=1), num_ssms * [trees_examined])
+    return np.argmax(ssm_ass, axis=1)
 
 class SsmAssignmentComputer(object):
   def __init__(self, loader):
@@ -218,12 +233,13 @@ def main():
   args = parser.parse_args()
 
   loader = ResultLoader(args.tree_summary, args.mutation_list, args.mutation_assignment)
-  outputs_to_write = set(('1A', '1B', '1C', '2A', '2B', '3A', '3B'))
+  #outputs_to_write = set(('1A', '1B', '1C', '2A', '2B', '3A', '3B'))
+  outputs_to_write = set(('1A', '1B', '1C', '2A'))
 
-  # ssc is used for outputs 1A, 1B, 1C, 2A, and 3A, so always create it, since
-  # it will most likely be used by something.
-  ssc = SubcloneStatsComputer(loader.tree_summary)
-  ssc.calc()
+  # ssc is used for outputs 1A, 1B, 1C, 2A, and 3A.
+  if len(set(('1A', '1B', '1C', '2A', '3A')) & outputs_to_write) > 0:
+    ssc = SubcloneStatsComputer(loader.tree_summary)
+    ssc.calc()
 
   if '1A' in outputs_to_write:
     with open(os.path.join(args.output_dir, '1A.txt'), 'w') as outf:
@@ -231,17 +247,23 @@ def main():
   if '1B' in outputs_to_write:
     with open(os.path.join(args.output_dir, '1B.txt'), 'w') as outf:
       print(ssc.cancer_pops, file=outf)
-  if '1C' in outputs_to_write:
-    with open(os.path.join(args.output_dir, '1C.txt'), 'w') as outf:
-      for cluster_num, (num_ssms, phi) in enumerate(zip(ssc.num_ssms, ssc.phis)):
-        print(cluster_num + 1, num_ssms, phi, sep='\t', file=outf)
 
-  if '2A' in outputs_to_write:
+  if '1C' in outputs_to_write or '2A' in outputs_to_write:
     cmc = ClusterMembershipComputer(loader, ssc)
-    with open(os.path.join(args.output_dir, '2A.txt'), 'w') as outf:
-      # These will be in sorted order, so nth row refers to SSM with ID "s{n - 1}".
-      for ssm_id, cluster in cmc.calc():
-        print(cluster, file=outf)
+    ssm_ass = cmc.calc()
+
+    if '1C' in outputs_to_write:
+      with open(os.path.join(args.output_dir, '1C.txt'), 'w') as outf:
+        for cluster_num, phi in enumerate(ssc.phis):
+          ssms_in_cluster = np.sum(ssm_ass == cluster_num)
+          # Don't use ssc.num_ssms, as it won't necessarily correspond to the
+          # number of SSMs listed for each population in 2A.
+          print(cluster_num + 1, ssms_in_cluster, phi, sep='\t', file=outf)
+
+    if '2A' in outputs_to_write:
+      with open(os.path.join(args.output_dir, '2A.txt'), 'w') as outf:
+        for ssm_idx, cluster in enumerate(ssm_ass):
+          print(cluster + 1, file=outf)
 
   if '2B' in outputs_to_write:
     coassc = CoassignmentComputer(loader)
