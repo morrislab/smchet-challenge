@@ -138,7 +138,8 @@ class SsmAssignmentComputer(object):
       for subclone_idx, muts in mut_assignments.items():
         ssm_ids = [int(ssm[1:]) for ssm in muts['ssms']]
         ssm_ass[ssm_ids, subclone_idx - 1] = 1.0
-        yield (tree_idx, ssm_ass)
+      assert np.array_equal(np.sum(ssm_ass, axis=1), np.ones(ssm_ass.shape[0]))
+      yield (tree_idx, ssm_ass)
 
 class CoassignmentComputer(object):
   def __init__(self, loader):
@@ -152,9 +153,10 @@ class CoassignmentComputer(object):
 
     for tree_idx, ssm_ass in ssm_ass.compute_ssm_assignments():
       num_trees += 1
-      coass += np.dot(ssm_ass, ssm_ass.T)
+      ssm_ass_sq = np.dot(ssm_ass, ssm_ass.T)
+      assert np.array_equal(np.diag(ssm_ass_sq), np.ones(ssm_ass_sq.shape[0]))
+      coass += ssm_ass_sq
     coass /= num_trees
-    np.fill_diagonal(coass, 1)
     return coass
 
 class SsmRelationComputer(object):
@@ -164,10 +166,15 @@ class SsmRelationComputer(object):
   def _determine_node_ancestry(self, tree_structure, num_pops):
     node_ancestry = np.zeros((num_pops, num_pops))
     def _mark_desc(par, desc):
+      # Ignore root when calculating matrix. It's of no interest as it has no
+      # SSMs.
+      if par == 0:
+        return
       for descendant in desc:
         node_ancestry[par - 1, descendant - 1] = 1
         if descendant in tree_structure:
           _mark_desc(par, tree_structure[descendant])
+
     for parent, children in tree_structure.items():
       _mark_desc(parent, children)
     return node_ancestry
@@ -188,10 +195,10 @@ class SsmRelationComputer(object):
       ssm_ancestry = np.dot(ssm_ass, node_ancestry)
       # ADM: ancestor-descendant matrix
       tree_adm = np.dot(ssm_ancestry, ssm_ass.T)
+      assert np.array_equal(np.diag(tree_adm), np.zeros(tree_adm.shape[0]))
       ancestor_desc += tree_adm
 
     ancestor_desc /= num_trees
-    np.fill_diagonal(ancestor_desc, 0)
     return ancestor_desc
 
 class NodeRelationComputer(object):
@@ -233,8 +240,7 @@ def main():
   args = parser.parse_args()
 
   loader = ResultLoader(args.tree_summary, args.mutation_list, args.mutation_assignment)
-  #outputs_to_write = set(('1A', '1B', '1C', '2A', '2B', '3A', '3B'))
-  outputs_to_write = set(('1A', '1B', '1C', '2A'))
+  outputs_to_write = set(('1A', '1B', '1C', '2A', '2B', '3A', '3B'))
 
   # ssc is used for outputs 1A, 1B, 1C, 2A, and 3A.
   if len(set(('1A', '1B', '1C', '2A', '3A')) & outputs_to_write) > 0:
