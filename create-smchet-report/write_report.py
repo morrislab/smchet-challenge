@@ -261,9 +261,14 @@ def main():
     if '1C' in outputs_to_write:
       with open(os.path.join(args.output_dir, '1C.txt'), 'w') as outf:
         for cluster_num, phi in enumerate(ssc.phis):
-          ssms_in_cluster = np.sum(ssm_ass == cluster_num)
-          # Don't use ssc.num_ssms, as it won't necessarily correspond to the
-          # number of SSMs listed for each population in 2A.
+          # If you want the number of SSMs in the cluster to match the mutation
+          # assignments in 2A, you can do this:
+          #ssms_in_cluster = np.sum(ssm_ass == cluster_num)
+
+          # But we don't care about this matching at the moment, so we'll
+          # compute our posterior summary without the number of mutations
+          # reported in 1C and the counts from 2A needing to match.
+          ssms_in_cluster = ssc.num_ssms[cluster_num]
           print(cluster_num + 1, ssms_in_cluster, phi, sep='\t', file=outf)
 
     if '2A' in outputs_to_write:
