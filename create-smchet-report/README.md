@@ -1,7 +1,10 @@
 Description
 ===========
-This code will generate tumor phylogeny reconstruction results in the format needed for the
-[SMC-Het Challenge](http://dreamchallenges.org/project/home-upcoming/dream-9-5-icgc-tcga-dream-somatic-mutation-calling-tumor-heterogeneity-challenge-smc-het/).
+This code will generate tumor phylogeny reconstruction results in the format
+needed for the [SMC-Het
+Challenge](http://dreamchallenges.org/project/home-upcoming/dream-9-5-icgc-tcga-dream-somatic-mutation-calling-tumor-heterogeneity-challenge-smc-het/).
+The outputs produced, which are listed later in this document, summarize the
+mode solution sampled by PhyloWGS
 
 
 Example usage
@@ -25,6 +28,19 @@ Then, create the Challenge outputs based on the JSON representation:
       muts.json.gz \
       mutass.zip \
       outputs
+
+
+Caveats
+=======
+This code doesn't work for multi-sample data, as the sample purity and
+per-subclone cellular prevalences are reported as the mean values across
+samples. This makes no biological sense, and was only a hack to get this code
+running for SMC-Het, which was single-sample.
+
+Multi-modal solutions won't be properly characterized by the single solution
+reported by this code. This code assumes that there is a dominant mode amongst
+the sampled solutions.
+
 
 Full usage
 ==========
@@ -68,6 +84,7 @@ Challenge-outputs writer:
 
     optional arguments:
       -h, --help           show this help message and exit
+
 
 Outputs
 =======
