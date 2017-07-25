@@ -5,6 +5,30 @@ import os
 from scipy import stats
 from pwgsresults.result_loader import ResultLoader
 
+def round_to_int(arr, dtype=np.int64):
+  '''Round each array element to the nearest integer, while distributing the
+  rounding errors equitably amongst members.'''
+  rounded = np.rint(arr)
+  rerr = np.sum(rounded - arr)
+  assert np.isclose(np.rint(rerr), rerr), '%s %s' % (np.rint(rerr), rerr)
+
+  # Correct rounding error by subtracting 1 from the largest node, then
+  # moving on to the next and continuing until no error remains. Assuming
+  # that elements in arr sum to an integer, the accumulated rounding error
+  # will always be an integer, and will always be <= 0.5*len(arr).
+  biggest_idxs = list(np.argsort(rounded))
+  while not np.isclose(rerr, 0):
+    biggest_idx = biggest_idxs.pop()
+    if rerr > 0:
+      rounded[biggest_idx] -= 1
+    else:
+      rounded[biggest_idx] += 1
+    rerr = np.sum(rounded - arr)
+
+  rounded = rounded.astype(dtype)
+  assert np.isclose(np.sum(arr), np.sum(rounded))
+  return rounded
+
 class SubcloneStatsComputer(object):
   def __init__(self, tree_summary):
     self._tree_summary = tree_summary
@@ -12,7 +36,6 @@ class SubcloneStatsComputer(object):
     self.cancer_pops = None
     self.cellularity = None
     self.phis = None
-    self.num_ssms = None
 
   def calc(self):
     self._calc_global_stats()
@@ -48,7 +71,7 @@ class SubcloneStatsComputer(object):
 
   def _calc_pop_stats(self):
     K = self.cancer_pops
-    phis_sum, num_ssms_sum = np.zeros(K), np.zeros(K)
+    phis_sum = np.zeros(K)
     trees_examined = 0
 
     for tree in self._tree_summary.values():
@@ -57,44 +80,16 @@ class SubcloneStatsComputer(object):
         continue
       # TODO: extend the format to handle cellular prevalences for multi-sample
       # data. Current mean-taking behaviour is stupid.
-      vals = [(np.mean(pops[pidx]['cellular_prevalence']), pops[pidx]['num_ssms']) for pidx in pops.keys() if pidx != 0]
+      phis = [np.mean(pops[pidx]['cellular_prevalence']) for pidx in pops.keys() if pidx != 0]
+      phis = np.array(sorted(phis, reverse=True))
       # Map nodes to one another by rank of descending cellular prevalence.
       # This behaviour isn't ideal, but it's better than previous behaviour,
       # when we just relied on the given node indices (assigned in JSON-writing
       # code via depth-first traversal) as given.
-      vals = sorted(vals, key = lambda V: V[0], reverse = True)
-      phis, num_ssms = zip(*vals)
       phis_sum += phis
-      num_ssms_sum += num_ssms
       trees_examined += 1
 
     self.phis = phis_sum / trees_examined
-    self.num_ssms = num_ssms_sum / trees_examined
-    self.num_ssms = self._round_to_int(self.num_ssms)
-
-  def _round_to_int(self, arr, dtype=np.int64):
-    '''Round each array element to the nearest integer, while distributing the
-    rounding errors equitably amongst members.'''
-    rounded = np.rint(arr)
-    rerr = np.sum(rounded - arr)
-    assert np.isclose(np.rint(rerr), rerr), '%s %s' % (np.rint(rerr), rerr)
-
-    # Correct rounding error by subtracting 1 from the largest node, then
-    # moving on to the next and continuing until no error remains. Assuming
-    # that elements in arr sum to an integer, the accumulated rounding error
-    # will always be an integer, and will always be <= 0.5*len(arr).
-    biggest_idxs = list(np.argsort(rounded))
-    while not np.isclose(rerr, 0):
-      biggest_idx = biggest_idxs.pop()
-      if rerr > 0:
-        rounded[biggest_idx] -= 1
-      else:
-        rounded[biggest_idx] += 1
-      rerr = np.sum(rounded - arr)
-
-    rounded = rounded.astype(dtype)
-    assert np.isclose(np.sum(arr), np.sum(rounded))
-    return rounded
 
 class ClusterMembershipComputer(object):
   def __init__(self, loader, subclone_stats):
@@ -104,7 +99,8 @@ class ClusterMembershipComputer(object):
   def calc(self):
     K = self._subclone_stats.cancer_pops
     num_ssms = self._loader.num_ssms
-    ssm_ass = np.zeros((num_ssms, K))
+    ssm_cp = np.zeros(num_ssms)
+    pop_ssm_count = np.zeros(K)
     trees_examined = 0
 
     for tree_idx, mut_assignments in self._loader.load_all_mut_assignments():
@@ -120,11 +116,28 @@ class ClusterMembershipComputer(object):
       for rank, pop_idx in enumerate(pop_idxs):
         pop_ssms = mut_assignments[pop_idx]['ssms']
         ssm_ids = [int(ssm[1:]) for ssm in pop_ssms]
-        ssm_ass[ssm_ids, rank] += 1
+        pop_cp = pops[pop_idx]['cellular_prevalence']
+        ssm_cp[ssm_ids] += pop_cp
+        pop_ssm_count[rank] += len(ssm_ids)
       trees_examined += 1
 
-    assert np.array_equal(np.sum(ssm_ass, axis=1), num_ssms * [trees_examined])
-    return np.argmax(ssm_ass, axis=1)
+    assert np.array_equal(np.sum(pop_ssm_count), num_ssms * trees_examined)
+    ssm_cp        /= trees_examined
+    pop_ssm_count = round_to_int(pop_ssm_count / trees_examined)
+
+    assignments = np.zeros(num_ssms, dtype=np.int64)
+    ordered_ssm_idxs = np.argsort(-ssm_cp) # Order by descending CP
+    cumssms = np.cumsum(pop_ssm_count)
+    for I in range(len(cumssms) - 1):
+      # Don't need to process cluster zero, since its SSMs will already be
+      # assigned to zero, given that all SSMs are assigned to zero by default.
+      start, end = cumssms[I], cumssms[I + 1]
+      ssmidxs = ordered_ssm_idxs[start:end]
+      assignments[ssmidxs] = I + 1
+
+    for cidx in range(K):
+      assert np.sum(assignments == cidx) == pop_ssm_count[cidx]
+    return (assignments, pop_ssm_count)
 
 class SsmAssignmentComputer(object):
   def __init__(self, loader):
@@ -256,7 +269,7 @@ def main():
 
   if '1C' in outputs_to_write or '2A' in outputs_to_write:
     cmc = ClusterMembershipComputer(loader, ssc)
-    ssm_ass = cmc.calc()
+    ssm_ass, num_ssms = cmc.calc()
 
     if '1C' in outputs_to_write:
       with open(os.path.join(args.output_dir, '1C.txt'), 'w') as outf:
@@ -268,7 +281,7 @@ def main():
           # But we don't care about this matching at the moment, so we'll
           # compute our posterior summary without the number of mutations
           # reported in 1C and the counts from 2A needing to match.
-          ssms_in_cluster = ssc.num_ssms[cluster_num]
+          ssms_in_cluster = num_ssms[cluster_num]
           print(cluster_num + 1, ssms_in_cluster, phi, sep='\t', file=outf)
 
     if '2A' in outputs_to_write:
