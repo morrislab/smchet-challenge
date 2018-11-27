@@ -12,4 +12,5 @@ outdata <- data.frame(
   "total_reads" = apply(indata$mutCount + indata$WTCount, 1, paste, collapse=','),
   "var_read_prob" = apply(indata$omega, 1, paste, collapse=',')
 )
+outdata <- outdata[(!grepl('Inf', outdata$var_read_prob) & !grepl('NaN', outdata$var_read_prob)),]
 write.table(outdata, file=outfn, quote=FALSE, sep='\t', row.names = FALSE)
