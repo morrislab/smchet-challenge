@@ -23,6 +23,7 @@ function convert_inputs {
       "$maximefn" \
       "$INDIR/$(echo $sampid | tr . _).ssm.tmp &&" \
       "PYTHONPATH=$PAIRTREEDIR:$PYTHONPATH python3 $BASEDIR/convert_maxime.py" \
+      "--remove-small-clusters" \
       "$INDIR/$(echo $sampid | tr . _).{ssm.tmp,ssm,params.json} &&" \
       "rm $INDIR/$(echo $sampid | tr . _).ssm.tmp"
   done | parallel -j$PARALLEL --halt 1
@@ -89,8 +90,8 @@ function plot {
 
 function main {
   #convert_inputs
-  #run_pairtree
-  plot
+  run_pairtree
+  #plot
 }
 
 main

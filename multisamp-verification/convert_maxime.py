@@ -63,20 +63,35 @@ def make_sampnames(variants):
   S = len(next(iter(variants.values()))['var_reads'])
   return ['Sample %s' % (sidx + 1) for sidx in range(S)]
 
-def write_params(clusters, sampnames, paramsfn):
+def write_params(clusters, garbage, sampnames, paramsfn):
   params = {
     'samples': sampnames,
     'clusters': clusters,
-    'garbage': [],
+    'garbage': garbage,
   }
   with open(paramsfn, 'w') as outf:
     json.dump(params, outf)
+
+def remove_small_clusters(clusters):
+  garbage = []
+  filtered = []
+
+  num_vars = np.sum([len(C) for C in clusters])
+  threshold = np.round(0.01 * num_vars)
+  for C in clusters:
+    if len(C) >= threshold:
+      filtered.append(C)
+    else:
+      garbage += C
+
+  return (filtered, garbage)
 
 def main():
   parser = argparse.ArgumentParser(
     description='LOL HI THERE',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter
   )
+  parser.add_argument('--remove-small-clusters', action='store_true')
   parser.add_argument('inssm_fn')
   parser.add_argument('outssm_fn')
   parser.add_argument('outparams_fn')
@@ -86,8 +101,13 @@ def main():
   clusters = extract_clusters(variants)
   clusters = sort_clusters_by_vaf(clusters, variants)
   inputparser.write_ssms(variants, args.outssm_fn)
+
+  if args.remove_small_clusters:
+    clusters, garbage = remove_small_clusters(clusters)
+  else:
+    garbage = []
   sampnames = make_sampnames(variants)
-  write_params(clusters, sampnames, args.outparams_fn)
+  write_params(clusters, garbage, sampnames, args.outparams_fn)
 
 if __name__ == '__main__':
   main()
