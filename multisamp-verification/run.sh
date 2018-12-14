@@ -3,8 +3,8 @@
 
 BASEDIR=$(dirname "$(readlink -f "$0")")
 JOBDIR=$SCRATCH/jobs
-INDIR=$SCRATCH/pairtree/inputs/smchet-multisamp
-RESULTSDIR=$SCRATCH/pairtree/results/smchet-multisamp
+INDIR=$SCRATCH/pairtree/inputs/smchet-multisamp.allclust
+RESULTSDIR=$SCRATCH/pairtree/results/smchet-multisamp.allclust
 PAIRTREEDIR=~/work/pairtree
 
 PARALLEL=80
@@ -83,9 +83,13 @@ function plot {
   done | parallel -j$PARALLEL
 
   cd $RESULTSDIR
-  for foo in $(ls -v *.results.html); do
-    echo "<a href=$foo>$(echo $foo | cut -d. -f1)</a> ($(ls -lh $foo | awk '{print $5}'))<br>"
-  done > index.html
+  (
+    echo "<ul>"
+    for foo in $(ls -v *.results.html); do
+      echo "<li><a href=$foo>$(echo $foo | cut -d. -f1)</a> ($(ls -lh $foo | awk '{print $5}'))</li>"
+    done
+    echo "</ul>"
+  ) > index.html
 }
 
 function main {
