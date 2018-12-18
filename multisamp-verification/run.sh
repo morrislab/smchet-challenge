@@ -3,8 +3,8 @@
 
 BASEDIR=$(dirname "$(readlink -f "$0")")
 JOBDIR=$SCRATCH/jobs
-INDIR=$SCRATCH/pairtree/inputs/smchet-multisamp.allclust
-RESULTSDIR=$SCRATCH/pairtree/results/smchet-multisamp.allclust
+INDIR=$SCRATCH/pairtree/inputs/smchet-multisamp.dpclust_allclust
+RESULTSDIR=$SCRATCH/pairtree/results/smchet-multisamp.dpclust_allclust
 PAIRTREEDIR=~/work/pairtree
 
 PARALLEL=80
